@@ -61,6 +61,8 @@ export default function App() {
   const [receivingCall, setReceivingCall] = useState(false);
   const [callerSignal, setCallerSignal] = useState<RTCSessionDescriptionInit | null>(null);
   const [callerSocketId, setCallerSocketId] = useState<string>('');
+  const [locationFilter, setLocationFilter] = useState<'nearby' | 'outbound' | 'all'>('nearby');
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -69,7 +71,18 @@ export default function App() {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const activeChatRef = useRef<User | null>(null);
+
+  const filteredMatches = matches.filter((match) => {
+    if (locationFilter === 'outbound') {
+      return match.country && profileData.country ? match.country !== profileData.country : true;
+    }
+    if (locationFilter === 'all') {
+      return true;
+    }
+    return true;
+  });
 
   const handleGoogleSuccess = async (credentialResponse: GoogleCredentialResponse) => {
     try {
@@ -98,6 +111,95 @@ export default function App() {
     } catch (error) {
       console.error('Google login parsing failed', error);
     }
+  };
+
+  const countryCodeMap: Record<string, string> = {
+    'United States': 'US',
+    'United Kingdom': 'GB',
+    Canada: 'CA',
+    Australia: 'AU',
+    India: 'IN',
+    Pakistan: 'PK',
+    Nepal: 'NP',
+    Germany: 'DE',
+    France: 'FR',
+    Brazil: 'BR',
+    Japan: 'JP',
+    China: 'CN',
+    Mexico: 'MX',
+    Italy: 'IT',
+    Spain: 'ES',
+    Netherlands: 'NL',
+    Sweden: 'SE',
+    Norway: 'NO',
+    Denmark: 'DK',
+    Finland: 'FI',
+    'South Korea': 'KR',
+    'South Africa': 'ZA',
+    'New Zealand': 'NZ',
+    Singapore: 'SG',
+    Thailand: 'TH',
+    Philippines: 'PH',
+    Vietnam: 'VN',
+    Malaysia: 'MY',
+    Indonesia: 'ID',
+    Argentina: 'AR',
+    Chile: 'CL',
+    Colombia: 'CO',
+    Peru: 'PE',
+    Russia: 'RU',
+    Turkey: 'TR',
+    Egypt: 'EG',
+    Morocco: 'MA',
+    Kenya: 'KE',
+    Israel: 'IL',
+    'Saudi Arabia': 'SA',
+    'United Arab Emirates': 'AE',
+    Switzerland: 'CH',
+    Austria: 'AT',
+    Belgium: 'BE',
+    Portugal: 'PT',
+    Poland: 'PL',
+    Greece: 'GR',
+    'Czech Republic': 'CZ',
+    Ireland: 'IE',
+    Hungary: 'HU',
+    Romania: 'RO',
+    Ukraine: 'UA',
+  };
+
+  const getCountryFlag = (country?: string) => {
+    if (!country) return '';
+    const code = countryCodeMap[country];
+    if (!code) return '🌍';
+    return code
+      .toUpperCase()
+      .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
+  };
+
+  const playRingtone = () => {
+    try {
+      const AudioContext = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+      const audioCtx = new AudioContext();
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.value = 520;
+      gain.gain.value = 0.08;
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.18);
+      setTimeout(() => audioCtx.close(), 300);
+    } catch (error) {
+      console.warn('Ringtone play failed', error);
+    }
+  };
+
+  const emojiList = ['😊', '😂', '❤️', '😍', '😎', '😉', '🔥', '👌', '🎉', '👍', '💬'];
+
+  const insertEmoji = (emoji: string) => {
+    setInputText((text) => `${text}${emoji}`);
   };
 
   // initialize sockets and fetch matches only after profile setup is completed
@@ -145,6 +247,7 @@ export default function App() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
         fetchNearbyMatches(position.coords.latitude, position.coords.longitude);
       },
       (error) => {
@@ -183,6 +286,8 @@ export default function App() {
           ...prev,
           [message.fromUserId]: message.text.slice(0, 18),
         }));
+      } else {
+        playRingtone();
       }
     });
 
@@ -201,10 +306,22 @@ export default function App() {
     });
 
     socket.on('incoming-call', ({ fromSocketId, offer }: { fromSocketId: string; offer: RTCSessionDescriptionInit }) => {
+      playRingtone();
       setReceivingCall(true);
       setCallerSignal(offer);
       setCallerSocketId(fromSocketId);
       remoteSocketIdRef.current = fromSocketId;
+    });
+
+    socket.on('user-online', ({ userId, socketId }: { userId: string; socketId: string }) => {
+      setMatches((prev) => prev.map((match) => (match.id === userId ? { ...match, socketId } : match)));
+      if (activeChatRef.current?.id === userId) {
+        playRingtone();
+      }
+    });
+
+    socket.on('user-offline', ({ userId }: { userId: string }) => {
+      setMatches((prev) => prev.map((match) => (match.id === userId ? { ...match, socketId: undefined } : match)));
     });
 
     socket.on('call-ended', ({ fromSocketId }: any) => {
@@ -234,6 +351,8 @@ export default function App() {
       socket.off('receive-message');
       socket.off('receive-file');
       socket.off('incoming-call');
+      socket.off('user-online');
+      socket.off('user-offline');
       socket.off('call-ended');
       socket.off('ice-candidate');
       socket.off('friend-added');
@@ -265,6 +384,10 @@ export default function App() {
       setMessagePreview((prev) => ({ ...prev, [activeChat.id]: '' }));
     }
   }, [activeChat]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, activeChat]);
 
   const sendMessage = () => {
     if (!inputText.trim() || !activeChat || !socketRef.current || !userProfile) return;
@@ -353,14 +476,6 @@ export default function App() {
     setSentFriends((prev) => ({ ...prev, [targetUserId]: true }));
   };
 
-  const aiSuggest = async () => {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/ai-suggest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: inputText || '' }) });
-      const data = await res.json();
-      if (data.success && data.suggestions?.length) setInputText(data.suggestions[0]);
-    } catch (e) { console.error(e); }
-  };
-
   const setupWebRTC = async (remoteSocketId?: string) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     localStreamRef.current = stream;
@@ -403,8 +518,8 @@ export default function App() {
       return;
     }
 
-    setIsCalling(true);
     const peer = await setupWebRTC(targetUser.socketId);
+    setIsCalling(true);
 
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
@@ -496,8 +611,11 @@ export default function App() {
                   <input placeholder="Date of birth" value={profileData.dob || ''} onChange={(e)=>setProfileData({...profileData, dob: e.target.value})} style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                 </div>
 
-                <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input type="file" accept="image/*" onChange={(e)=>handleAvatarChange(e.target.files?.[0])} />
+                <div style={{ marginTop: 8 }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '12px 14px', borderRadius: 12, background: '#f3f4f6', border: '1px dashed #d1d5db', color: '#4b5563', cursor: 'pointer' }}>
+                    Upload profile photo
+                    <input type="file" accept="image/*" onChange={(e)=>handleAvatarChange(e.target.files?.[0])} style={{ display: 'none' }} />
+                  </label>
                 </div>
               </div>
             </div>
@@ -583,23 +701,32 @@ export default function App() {
             </div>
 
             <div>
-              <h3 style={{ margin: '0 0 18px', fontSize: '18px', color: '#333' }}>Nearby Discoveries</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#333' }}>Discover matches</h3>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => setLocationFilter('nearby')} style={{ padding: '8px 12px', borderRadius: 999, border: locationFilter === 'nearby' ? '1px solid #fd3b73' : '1px solid #e5e7eb', background: locationFilter === 'nearby' ? '#fde9f2' : '#fff', color: '#111' }}>Nearby</button>
+                  <button type="button" onClick={() => setLocationFilter('outbound')} style={{ padding: '8px 12px', borderRadius: 999, border: locationFilter === 'outbound' ? '1px solid #fd3b73' : '1px solid #e5e7eb', background: locationFilter === 'outbound' ? '#fde9f2' : '#fff', color: '#111' }}>Out of country</button>
+                  <button type="button" onClick={() => setLocationFilter('all')} style={{ padding: '8px 12px', borderRadius: 999, border: locationFilter === 'all' ? '1px solid #fd3b73' : '1px solid #e5e7eb', background: locationFilter === 'all' ? '#fde9f2' : '#fff', color: '#111' }}>All</button>
+                </div>
+              </div>
               <div style={{ display: 'grid', gap: '12px' }}>
                 {connectionError && (
                   <div style={{ color: '#b91c1c', padding: '16px', borderRadius: '14px', background: '#fff0f1', textAlign: 'center' }}>
                     {connectionError}
                   </div>
                 )}
-                {matches.length === 0 ? (
+                {filteredMatches.length === 0 ? (
                   <div style={{ color: '#888', padding: '22px', borderRadius: '14px', background: '#fff', textAlign: 'center' }}>
-                    Finding local profiles near you...
+                    {matches.length === 0 ? 'Finding local profiles near you...' : 'No matches found for this filter.'}
                   </div>
                 ) : (
-                  matches.map((match) => (
+                  filteredMatches.map((match) => (
                     <div key={match.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '14px', border: activeChat?.id === match.id ? '2px solid #fd3b73' : '1px solid #e5e7eb', background: activeChat?.id === match.id ? '#fff0f4' : '#fff', cursor: 'pointer' }}>
                       <div onClick={() => { setActiveChat(match); setUnreadCounts(prev => ({ ...prev, [match.id]: 0 })); setMessagePreview(prev => ({ ...prev, [match.id]: '' })); }} style={{ flex: 1, textAlign: 'left' }}>
-                        <p style={{ margin: 0, fontWeight: 700, color: '#222' }}>👤 {match.name}</p>
-                        <p style={{ margin: '8px 0 0', color: '#666', fontSize: '13px' }}>📍 Nearby match</p>
+                        <p style={{ margin: 0, fontWeight: 700, color: '#222' }}>{match.country ? `${getCountryFlag(match.country)} ` : ''}👤 {match.name}</p>
+                        <p style={{ margin: '8px 0 0', color: '#666', fontSize: '13px' }}>
+                          {match.country && profileData.country && match.country !== profileData.country ? '🌐 Out of country' : '📍 Nearby match'}
+                        </p>
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {unreadCounts[match.id] > 0 && (
@@ -698,8 +825,8 @@ export default function App() {
                   </div>
                 )}
 
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  <div style={{ flex: 1, overflowY: 'auto', padding: '18px', borderRadius: '18px', background: '#fbfbfb', border: '1px solid #eee' }}>
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px', borderRadius: '18px', background: '#fbfbfb', border: '1px solid #eee' }}>
                     {messages.filter((message) => message.fromUserId === activeChat.id || message.fromUserId === userProfile.id).map((message, index) => {
                       const isSentByMe = message.fromUserId === userProfile.id;
                       return (
@@ -726,6 +853,7 @@ export default function App() {
                         </div>
                       );
                     })}
+                    <div ref={messagesEndRef} />
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
@@ -754,7 +882,21 @@ export default function App() {
                       }}
                     />
 
-                    <button type="button" onClick={aiSuggest} style={{ padding: '10px 12px', borderRadius: 10, background: '#eef2ff', border: '1px solid #e0e7ff' }}>AI</button>
+                    <select
+                      onChange={(event) => {
+                        const emoji = event.target.value;
+                        if (emoji) {
+                          insertEmoji(emoji);
+                          event.target.selectedIndex = 0;
+                        }
+                      }}
+                      style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}
+                    >
+                      <option value="">😊 Add emoji</option>
+                      {emojiList.map((emoji) => (
+                        <option key={emoji} value={emoji}>{emoji}</option>
+                      ))}
+                    </select>
 
                     <button
                       type="button"
@@ -801,7 +943,10 @@ export default function App() {
                       <input placeholder="Date of birth" value={profileData.dob || ''} onChange={(e)=>setProfileData({...profileData, dob: e.target.value})} style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                     </div>
                     <div style={{ marginTop: 8 }}>
-                      <input type="file" accept="image/*" onChange={(e)=>handleAvatarChange(e.target.files?.[0])} />
+                      <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '12px 14px', borderRadius: 12, background: '#f3f4f6', border: '1px dashed #d1d5db', color: '#4b5563', cursor: 'pointer' }}>
+                        Upload profile photo
+                        <input type="file" accept="image/*" onChange={(e)=>handleAvatarChange(e.target.files?.[0])} style={{ display: 'none' }} />
+                      </label>
                     </div>
                   </div>
                 </div>

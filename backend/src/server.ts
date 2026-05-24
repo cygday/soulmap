@@ -8,7 +8,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://soulmap-rho.vercel.app';
+const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
 
 console.log('Allowed CORS origin:', allowedOrigin);
 
@@ -114,6 +114,7 @@ io.on('connection', (socket: Socket) => {
     const user = users.get(userId) || { id: userId, name: `User_${userId.slice(0,4)}`, lat: 0, lng: 0 };
     user.socketId = socket.id;
     users.set(userId, user);
+    socket.broadcast.emit('user-online', { userId, socketId: socket.id });
   }
 
   // Messaging System
@@ -179,6 +180,7 @@ io.on('connection', (socket: Socket) => {
         user.socketId = undefined;
         users.set(userId, user);
       }
+      socket.broadcast.emit('user-offline', { userId });
     }
   });
 });
