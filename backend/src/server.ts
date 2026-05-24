@@ -8,9 +8,8 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
 
-app.use(cors({ origin: allowedOrigin }));
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN || 'https://soulmap-53xd.onrender.com' }));
 app.use(express.json());
 
 // Mock database memory storage
