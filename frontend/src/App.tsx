@@ -4,7 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import type { User, Message } from './types';
 
 const GOOGLE_CLIENT_ID = '150022750196-93l8mvoc3q8spoj9n9vlb53v65vno6vs.apps.googleusercontent.com';
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://soulmap-53xd.onrender.com';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://soulmap-rpnz.onrender.com';
 const LOGIN_SLIDES = [
   'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80',
   'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=900&q=80',
