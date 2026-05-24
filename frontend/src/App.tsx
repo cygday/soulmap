@@ -24,7 +24,7 @@ const INTEREST_OPTIONS = [
   'games',
 ];
 const COUNTRY_OPTIONS = [
-  'United States', 'United Kingdom', 'Canada', 'Australia', 'India', 'Nepal', 'Germany', 'France', 'Brazil', 'Japan', 'China', 'Mexico', 'Italy', 'Spain', 'Netherlands', 'Sweden', 'Norway', 'Denmark', 'Finland', 'South Korea', 'South Africa', 'New Zealand', 'Singapore', 'Thailand', 'Philippines', 'Vietnam', 'Malaysia', 'Indonesia', 'Argentina', 'Chile', 'Colombia', 'Peru', 'Russia', 'Turkey', 'Egypt', 'Morocco', 'Kenya', 'Israel', 'Saudi Arabia', 'United Arab Emirates', 'Switzerland', 'Austria', 'Belgium', 'Portugal', 'Poland', 'Greece', 'Czech Republic', 'Ireland', 'Hungary', 'Romania', 'Ukraine', 'Indonesia',
+  'United States', 'United Kingdom', 'Canada', 'Australia', 'India', 'Pakistan', 'Nepal', 'Germany', 'France', 'Brazil', 'Japan', 'China', 'Mexico', 'Italy', 'Spain', 'Netherlands', 'Sweden', 'Norway', 'Denmark', 'Finland', 'South Korea', 'South Africa', 'New Zealand', 'Singapore', 'Thailand', 'Philippines', 'Vietnam', 'Malaysia', 'Indonesia', 'Argentina', 'Chile', 'Colombia', 'Peru', 'Russia', 'Turkey', 'Egypt', 'Morocco', 'Kenya', 'Israel', 'Saudi Arabia', 'United Arab Emirates', 'Switzerland', 'Austria', 'Belgium', 'Portugal', 'Poland', 'Greece', 'Czech Republic', 'Ireland', 'Hungary', 'Romania', 'Ukraine', 'Indonesia',
 ];
 
 type GoogleCredentialResponse = {
