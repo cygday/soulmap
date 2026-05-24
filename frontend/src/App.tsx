@@ -154,14 +154,22 @@ export default function App() {
       }
     );
 
-    const socket = io(BACKEND_URL, { query: { userId: userProfile.id } });
+    const socket = io(BACKEND_URL, {
+      query: { userId: userProfile.id },
+      transports: ['websocket'],
+      withCredentials: true,
+    });
     socketRef.current = socket;
 
-    socket.on('connect', () => setSocketConnected(true));
+    socket.on('connect', () => {
+      setSocketConnected(true);
+      setConnectionError(null);
+    });
     socket.on('disconnect', () => setSocketConnected(false));
     socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
-      setConnectionError('Socket connect failed. Check your backend URL and allowed origins.');
+      const message = typeof error === 'string' ? error : error?.message || 'Unknown socket error';
+      setConnectionError(`Socket connect failed: ${message}. Check your backend URL and allowed origins.`);
     });
 
     socket.on('receive-message', (message: Message) => {
