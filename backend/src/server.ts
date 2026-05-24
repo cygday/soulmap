@@ -8,9 +8,11 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://soulmap-rho.vercel.app';
+const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
 
-app.use(cors({ origin: allowedOrigin }));
+console.log('Allowed CORS origin:', allowedOrigin);
+
+app.use(cors({ origin: allowedOrigin, credentials: true }));
 app.use(express.json());
 
 // Mock database memory storage
@@ -31,23 +33,28 @@ const users: Map<string, User> = new Map();
 // REST API for spatial matching (Haversine Formula)
 app.post('/api/nearby', (req:Request, res:Response) => {
   const { userId, name, lat, lng, radiusKm, country } = req.body;
-  if (!userId || lat === undefined || lng === undefined) {
-    return res.status(400).json({ error: 'Missing parameters' });
+  if (!userId) {
+    return res.status(400).json({ error: 'Missing userId' });
   }
 
-  // Update or register user location and profile metadata
-  const existingUser = users.get(userId) || { id: userId, name: name || `User_${userId.slice(0,4)}`, lat, lng, country } as User;
-  existingUser.lat = lat;
-  existingUser.lng = lng;
+  const existingUser = users.get(userId) || { id: userId, name: name || `User_${userId.slice(0,4)}`, lat: lat ?? 0, lng: lng ?? 0, country } as User;
+  if (lat !== undefined) existingUser.lat = lat;
+  if (lng !== undefined) existingUser.lng = lng;
   existingUser.name = name || existingUser.name;
   if (country) existingUser.country = country;
   users.set(userId, existingUser);
 
   const R = 6371; // Earth radius in km
   const nearbyUsers: User[] = [];
+  const hasLocation = lat !== undefined && lng !== undefined;
 
   users.forEach((u) => {
     if (u.id === userId) return;
+    if (!hasLocation) {
+      nearbyUsers.push(u);
+      return;
+    }
+
     const dLat = ((u.lat - lat) * Math.PI) / 180;
     const dLng = ((u.lng - lng) * Math.PI) / 180;
     const a =
@@ -91,7 +98,11 @@ app.post('/api/ai-suggest', (req:Request, res:Response) => {
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: allowedOrigin, methods: ['GET', 'POST'] }
+  cors: {
+    origin: allowedOrigin === '*' ? true : allowedOrigin,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  }
 });
 
 // Socket.io Signalling & Real-Time Messaging Core

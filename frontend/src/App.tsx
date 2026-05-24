@@ -52,6 +52,10 @@ export default function App() {
   const [messagePreview, setMessagePreview] = useState<Record<string, string>>({});
   const [sentFriends, setSentFriends] = useState<Record<string, boolean>>({});
   const [loginSlideIndex, setLoginSlideIndex] = useState(0);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const [isCalling, setIsCalling] = useState(false);
   const [receivingCall, setReceivingCall] = useState(false);
@@ -100,29 +104,42 @@ export default function App() {
   useEffect(() => {
     if (!userProfile || !profileCompleted) return;
 
-    const fetchNearbyMatches = async (latitude: number, longitude: number) => {
+    const fetchNearbyMatches = async (latitude?: number, longitude?: number) => {
+      setLoadingMatches(true);
+      setConnectionError(null);
       try {
+        const body: any = {
+          userId: userProfile.id,
+          name: userProfile.name,
+          radiusKm: 100,
+          country: profileData.country,
+        };
+        if (latitude !== undefined && longitude !== undefined) {
+          body.lat = latitude;
+          body.lng = longitude;
+        }
+
         const response = await fetch(`${BACKEND_URL}/api/nearby`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: userProfile.id,
-            name: userProfile.name,
-            lat: latitude,
-            lng: longitude,
-            radiusKm: 100,
-            country: profileData.country,
-          }),
+          body: JSON.stringify(body),
         });
 
         const data = await response.json();
         if (data.success) {
           setMatches(data.matches || []);
+          if (!data.matches?.length) {
+            setConnectionError('No nearby matches found yet. Try again later or allow location access.');
+          }
         } else {
           console.error('Nearby API returned error', data);
+          setConnectionError('Failed to load matches from backend.');
         }
       } catch (error) {
         console.error('Failed fetching nearby matches', error);
+        setConnectionError('Cannot reach backend service. Please check connection.');
+      } finally {
+        setLoadingMatches(false);
       }
     };
 
@@ -132,11 +149,20 @@ export default function App() {
       },
       (error) => {
         console.error('Location access denied', error);
+        setConnectionError('Location access blocked. Showing available matches where possible.');
+        fetchNearbyMatches();
       }
     );
 
     const socket = io(BACKEND_URL, { query: { userId: userProfile.id } });
     socketRef.current = socket;
+
+    socket.on('connect', () => setSocketConnected(true));
+    socket.on('disconnect', () => setSocketConnected(false));
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setConnectionError('Socket connect failed. Check your backend URL and allowed origins.');
+    });
 
     socket.on('receive-message', (message: Message) => {
       setMessages((prev) => [...prev, message]);
@@ -194,9 +220,15 @@ export default function App() {
     });
 
     return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
       socket.off('receive-message');
+      socket.off('receive-file');
       socket.off('incoming-call');
+      socket.off('call-ended');
       socket.off('ice-candidate');
+      socket.off('friend-added');
       socket.disconnect();
       socketRef.current = null;
       peerRef.current = null;
@@ -209,6 +241,13 @@ export default function App() {
       setLoginSlideIndex((current) => (current + 1) % LOGIN_SLIDES.length);
     }, 3600);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const updateMobile = () => setIsMobile(window.innerWidth < 900);
+    updateMobile();
+    window.addEventListener('resize', updateMobile);
+    return () => window.removeEventListener('resize', updateMobile);
   }, []);
 
   useEffect(() => {
@@ -267,6 +306,7 @@ export default function App() {
   const signOut = () => {
     socketRef.current?.disconnect();
     socketRef.current = null;
+    setSocketConnected(false);
     setUserProfile(null);
     setProfileCompleted(false);
     setProfileData({ name: '', interests: [], country: '' });
@@ -275,6 +315,7 @@ export default function App() {
     setSentFriends({});
     setUnreadCounts({});
     setMessagePreview({});
+    setConnectionError(null);
   };
 
   const handleAvatarChange = (file?: File) => {
@@ -428,7 +469,7 @@ export default function App() {
       ) : !profileCompleted ? (
         // show lightweight profile setup before entering the main app
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f7fafc' }}>
-          <div style={{ background: '#fff', padding: 28, borderRadius: 12, width: 420, boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
+          <div style={{ background: '#fff', padding: 28, borderRadius: 12, width: 'min(92vw, 420px)', boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
             <h2 style={{ marginTop: 0 }}>Complete your profile</h2>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
@@ -517,17 +558,17 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
-          <aside style={{ width: '32%', borderRight: '1px solid #eee', background: '#fcfcfc', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
+          <aside style={{ width: isMobile ? '100%' : '32%', borderRight: isMobile ? 'none' : '1px solid #eee', borderBottom: isMobile ? '1px solid #eee' : 'none', background: '#fcfcfc', padding: isMobile ? '16px' : '24px' }}>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: '14px', marginBottom: '12px' }}>
               {userProfile.picture && (
                 <img src={userProfile.picture} alt="Profile" style={{ width: 50, height: 50, borderRadius: '50%' }} />
               )}
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{userProfile.name}</p>
                 <p style={{ margin: '6px 0 0', color: '#2d8f5f', fontSize: '13px' }}>● Active online</p>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: isMobile ? 10 : 0 }}>
                 <button onClick={() => setShowEditProfile(true)} style={{ padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Edit</button>
                 <button onClick={signOut} style={{ padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Sign Out</button>
               </div>
@@ -536,6 +577,11 @@ export default function App() {
             <div>
               <h3 style={{ margin: '0 0 18px', fontSize: '18px', color: '#333' }}>Nearby Discoveries</h3>
               <div style={{ display: 'grid', gap: '12px' }}>
+                {connectionError && (
+                  <div style={{ color: '#b91c1c', padding: '16px', borderRadius: '14px', background: '#fff0f1', textAlign: 'center' }}>
+                    {connectionError}
+                  </div>
+                )}
                 {matches.length === 0 ? (
                   <div style={{ color: '#888', padding: '22px', borderRadius: '14px', background: '#fff', textAlign: 'center' }}>
                     Finding local profiles near you...
@@ -564,13 +610,19 @@ export default function App() {
                 )}
               </div>
             </div>
+            <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ color: socketConnected ? '#15803d' : '#b91c1c', fontSize: 13 }}>
+                {socketConnected ? 'Socket connected' : 'Socket disconnected'}
+              </div>
+              {loadingMatches && <div style={{ color: '#2563eb', fontSize: 13 }}>Loading matches…</div>}
+            </div>
           </aside>
 
-          <main style={{ width: '68%', padding: '24px', display: 'flex', flexDirection: 'column' }}>
+          <main style={{ width: isMobile ? '100%' : '68%', padding: isMobile ? '16px' : '24px', display: 'flex', flexDirection: 'column' }}>
             {activeChat ? (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: '22px', gap: isMobile ? 16 : 0 }}>
+                  <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: 14 }}>
                     <div style={{ width: 60, height: 60, borderRadius: 18, overflow: 'hidden', cursor: 'pointer', border: '1px solid #e5e7eb' }} onClick={() => avatarInputRef.current?.click()}>
                       <img
                         src={avatarPreview || userProfile?.picture || 'https://via.placeholder.com/150?text=Profile'}
@@ -583,7 +635,7 @@ export default function App() {
                       <p style={{ margin: '8px 0 0', color: '#666' }}>Start a private chat or launch a quick video call.</p>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'flex-end' }}>
                     <button
                       type="button"
                       onClick={() => startCall(activeChat)}
@@ -668,7 +720,7 @@ export default function App() {
                     })}
                   </div>
 
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button type="button" onClick={() => setInputText(t => t + ' 😊')} style={{ padding: 8, borderRadius: 8 }}>😊</button>
                       <button type="button" onClick={() => setInputText(t => t + ' 😂')} style={{ padding: 8, borderRadius: 8 }}>😂</button>
@@ -686,6 +738,7 @@ export default function App() {
                       placeholder={`Type a message to ${activeChat.name}...`}
                       style={{
                         flex: 1,
+                        minWidth: 0,
                         borderRadius: '999px',
                         border: '1px solid #d1d5db',
                         padding: '14px 18px',
