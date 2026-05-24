@@ -8,8 +8,9 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://soulmap-rho.vercel.app';
 
-app.use(cors({ origin: process.env.ALLOWED_ORIGIN || 'https://soulmap-53xd.onrender.com' }));
+app.use(cors({ origin: allowedOrigin }));
 app.use(express.json());
 
 // Mock database memory storage
@@ -90,7 +91,7 @@ app.post('/api/ai-suggest', (req:Request, res:Response) => {
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: process.env.ALLOWED_ORIGIN || '*', methods: ['GET', 'POST'] }
+  cors: { origin: allowedOrigin, methods: ['GET', 'POST'] }
 });
 
 // Socket.io Signalling & Real-Time Messaging Core
