@@ -31,6 +31,27 @@ type GoogleCredentialResponse = {
   credential?: string;
 };
 
+type StoredSession = {
+  userProfile: {
+    id: string;
+    name: string;
+    email: string;
+    picture?: string;
+  };
+  profileCompleted: boolean;
+  profileData: {
+    name: string;
+    age?: string;
+    dob?: string;
+    interests?: string[];
+    country?: string;
+    photo?: string;
+  };
+  avatarPreview: string | null;
+};
+
+const SESSION_STORAGE_KEY = 'soulmap_session';
+
 export default function App() {
   const [userProfile, setUserProfile] = useState<{
     id: string;
@@ -56,6 +77,44 @@ export default function App() {
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const savedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!savedSession) return;
+
+    try {
+      const session: StoredSession = JSON.parse(savedSession);
+      if (session.userProfile) {
+        setUserProfile(session.userProfile);
+        setProfileCompleted(session.profileCompleted);
+        setProfileData(session.profileData);
+        setAvatarPreview(session.avatarPreview);
+      }
+    } catch (error) {
+      console.warn('Failed to restore session from localStorage:', error);
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userProfile) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
+
+    const session: StoredSession = {
+      userProfile,
+      profileCompleted,
+      profileData,
+      avatarPreview,
+    };
+
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    } catch (error) {
+      console.warn('Failed to save session to localStorage:', error);
+    }
+  }, [userProfile, profileCompleted, profileData, avatarPreview]);
 
   const [isCalling, setIsCalling] = useState(false);
   const [receivingCall, setReceivingCall] = useState(false);
@@ -447,6 +506,7 @@ export default function App() {
     setUnreadCounts({});
     setMessagePreview({});
     setConnectionError(null);
+    localStorage.removeItem(SESSION_STORAGE_KEY);
   };
 
   const handleAvatarChange = (file?: File) => {
