@@ -327,7 +327,10 @@ export default function App() {
       setSocketConnected(true);
       setConnectionError(null);
     });
-    socket.on('disconnect', () => setSocketConnected(false));
+    socket.on('disconnect', () => {
+      setSocketConnected(false);
+      endCall();
+    });
     socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
       const message = typeof error === 'string' ? error : error?.message || 'Unknown socket error';
@@ -384,13 +387,7 @@ export default function App() {
     });
 
     socket.on('call-ended', ({ fromSocketId }: any) => {
-      if (peerRef.current) {
-        peerRef.current.getSenders().forEach(s => s.track?.stop());
-        peerRef.current.close();
-        peerRef.current = null;
-      }
-      setIsCalling(false);
-      setReceivingCall(false);
+      endCall();
     });
 
     socket.on('friend-added', ({ fromUserId }: any) => {
@@ -445,7 +442,7 @@ export default function App() {
   }, [activeChat]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, activeChat]);
 
   const sendMessage = () => {
@@ -478,19 +475,27 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const hangUp = () => {
-    const toSocket = remoteSocketIdRef.current || callerSocketId;
-    if (socketRef.current && toSocket) socketRef.current.emit('hangup', { toSocketId: toSocket });
+  const endCall = () => {
     if (peerRef.current) {
-      peerRef.current.getSenders().forEach(s => s.track?.stop());
+      peerRef.current.getSenders().forEach((s) => s.track?.stop());
       peerRef.current.close();
       peerRef.current = null;
     }
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     }
+    remoteSocketIdRef.current = null;
+    setCallerSocketId('');
+    setCallerSignal(null);
     setIsCalling(false);
+    setReceivingCall(false);
+  };
+
+  const hangUp = () => {
+    const toSocket = remoteSocketIdRef.current || callerSocketId;
+    if (socketRef.current && toSocket) socketRef.current.emit('hangup', { toSocketId: toSocket });
+    endCall();
   };
 
   const signOut = () => {
@@ -745,21 +750,23 @@ export default function App() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
-          <aside style={{ width: isMobile ? '100%' : '32%', borderRight: isMobile ? 'none' : '1px solid #eee', borderBottom: isMobile ? '1px solid #eee' : 'none', background: '#fcfcfc', padding: isMobile ? '16px' : '24px' }}>
+          <aside style={{ width: isMobile ? '100%' : '32%', borderRight: isMobile ? 'none' : '1px solid #eee', borderBottom: isMobile ? '1px solid #eee' : 'none', background: '#fcfcfc', padding: isMobile ? '20px 16px' : '24px', minHeight: isMobile ? '220px' : 'auto' }}>
             <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: '14px', marginBottom: '12px' }}>
               {userProfile.picture && (
-                <img src={userProfile.picture} alt="Profile" style={{ width: 50, height: 50, borderRadius: '50%' }} />
+                <label htmlFor="profile-avatar-upload" style={{ cursor: 'pointer', display: 'inline-flex', flexShrink: 0, flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <img src={userProfile.picture} alt="Profile" style={{ width: 50, height: 50, borderRadius: '50%', border: '1px solid #e5e7eb' }} />
+                  <span style={{ fontSize: 11, color: '#6b7280' }}>Change photo</span>
+                </label>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{userProfile.name}</p>
                 <p style={{ margin: '6px 0 0', color: '#2d8f5f', fontSize: '13px' }}>● Active online</p>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: isMobile ? 10 : 0 }}>
-                <button onClick={() => setShowEditProfile(true)} style={{ padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Edit</button>
-                <button onClick={signOut} style={{ padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Sign Out</button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: isMobile ? 10 : 0, width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : 'flex-end' }}>
+                <button onClick={() => setShowEditProfile(true)} style={{ flex: isMobile ? 1 : undefined, padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Edit</button>
+                <button onClick={signOut} style={{ flex: isMobile ? 1 : undefined, padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Sign Out</button>
               </div>
             </div>
-
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
                 <h3 style={{ margin: 0, fontSize: '18px', color: '#333' }}>Discover matches</h3>
@@ -916,63 +923,61 @@ export default function App() {
                     <div ref={messagesEndRef} />
                   </div>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button type="button" onClick={() => setInputText(t => t + ' 😊')} style={{ padding: 8, borderRadius: 8 }}>😊</button>
-                      <button type="button" onClick={() => setInputText(t => t + ' 😂')} style={{ padding: 8, borderRadius: 8 }}>😂</button>
-                      <button type="button" onClick={() => setInputText(t => t + ' ❤️')} style={{ padding: 8, borderRadius: 8 }}>❤️</button>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                      <select
+                        onChange={(event) => {
+                          const emoji = event.target.value;
+                          if (emoji) {
+                            insertEmoji(emoji);
+                            event.target.selectedIndex = 0;
+                          }
+                        }}
+                        style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', minWidth: 160 }}
+                      >
+                        <option value="">😊 Add emoji</option>
+                        {emojiList.map((emoji) => (
+                          <option key={emoji} value={emoji}>{emoji}</option>
+                        ))}
+                      </select>
+
+                      <input id="chat-file" type="file" style={{ display: 'none' }} onChange={(e) => sendFile(e.target.files?.[0] ?? null)} />
+                      <label htmlFor="chat-file" style={{ cursor: 'pointer', padding: 12, borderRadius: 12, background: '#f3f4f6', border: '1px solid #e5e7eb' }}>📎</label>
                     </div>
 
-                    <input id="chat-file" type="file" style={{ display: 'none' }} onChange={(e) => sendFile(e.target.files?.[0] ?? null)} />
-                    <label htmlFor="chat-file" style={{ cursor: 'pointer', padding: 8, borderRadius: 8, background: '#f3f4f6', border: '1px solid #e5e7eb' }}>📎</label>
+                    <div style={{ display: 'flex', flex: 1, minWidth: 0, gap: '10px', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        value={inputText}
+                        onChange={(event) => setInputText(event.target.value)}
+                        onKeyDown={(event) => event.key === 'Enter' && sendMessage()}
+                        placeholder={`Type a message to ${activeChat.name}...`}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          borderRadius: '999px',
+                          border: '1px solid #d1d5db',
+                          padding: '14px 18px',
+                          fontSize: '14px',
+                        }}
+                      />
 
-                    <input
-                      type="text"
-                      value={inputText}
-                      onChange={(event) => setInputText(event.target.value)}
-                      onKeyDown={(event) => event.key === 'Enter' && sendMessage()}
-                      placeholder={`Type a message to ${activeChat.name}...`}
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        borderRadius: '999px',
-                        border: '1px solid #d1d5db',
-                        padding: '14px 18px',
-                        fontSize: '14px',
-                      }}
-                    />
-
-                    <select
-                      onChange={(event) => {
-                        const emoji = event.target.value;
-                        if (emoji) {
-                          insertEmoji(emoji);
-                          event.target.selectedIndex = 0;
-                        }
-                      }}
-                      style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}
-                    >
-                      <option value="">😊 Add emoji</option>
-                      {emojiList.map((emoji) => (
-                        <option key={emoji} value={emoji}>{emoji}</option>
-                      ))}
-                    </select>
-
-                    <button
-                      type="button"
-                      onClick={sendMessage}
-                      style={{
-                        borderRadius: '999px',
-                        background: '#fd3b73',
-                        color: '#fff',
-                        border: 'none',
-                        padding: '14px 22px',
-                        cursor: 'pointer',
-                        fontWeight: 700,
-                      }}
-                    >
-                      Send
-                    </button>
+                      <button
+                        type="button"
+                        onClick={sendMessage}
+                        style={{
+                          borderRadius: '999px',
+                          background: '#fd3b73',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '14px 22px',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                        }}
+                      >
+                        Send
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>
@@ -990,15 +995,15 @@ export default function App() {
           {showEditProfile && (
             <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={()=>setShowEditProfile(false)} />
-              <div style={{ background: '#fff', padding: 20, borderRadius: 12, width: 520, zIndex: 1300 }}>
+              <div style={{ background: '#fff', padding: isMobile ? 16 : 20, borderRadius: isMobile ? 18 : 12, width: isMobile ? 'min(92vw, 420px)' : 520, maxHeight: '90vh', overflowY: 'auto', zIndex: 1300 }}>
                 <h3 style={{ marginTop: 0 }}>Edit profile</h3>
-                <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12 }}>
                   <div style={{ width: 100, height: 100, borderRadius: 12, overflow: 'hidden', background: '#f3f4f6' }}>
                     {avatarPreview ? <img src={avatarPreview} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (userProfile?.picture ? <img src={userProfile.picture} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{padding:10,color:'#9ca3af'}}>No photo</div>)}
                   </div>
                   <div style={{ flex: 1 }}>
                     <input placeholder="Name" value={profileData.name} onChange={(e)=>setProfileData({...profileData, name: e.target.value})} style={{ width: '100%', padding: 8, marginBottom: 8, borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexDirection: isMobile ? 'column' : 'row' }}>
                       <input placeholder="Age" value={profileData.age || ''} onChange={(e)=>setProfileData({...profileData, age: e.target.value})} style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                       <input placeholder="Date of birth" value={profileData.dob || ''} onChange={(e)=>setProfileData({...profileData, dob: e.target.value})} style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                     </div>
