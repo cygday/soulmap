@@ -390,6 +390,10 @@ export default function App() {
       endCall();
     });
 
+    socket.on('hangup', () => {
+      endCall();
+    });
+
     socket.on('friend-added', ({ fromUserId }: any) => {
       console.log('Friend added by', fromUserId);
     });
@@ -442,7 +446,7 @@ export default function App() {
   }, [activeChat]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [messages, activeChat]);
 
   const sendMessage = () => {
@@ -542,7 +546,14 @@ export default function App() {
   };
 
   const setupWebRTC = async (remoteSocketId?: string) => {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
     localStreamRef.current = stream;
 
     if (localVideoRef.current) {
@@ -583,6 +594,7 @@ export default function App() {
       return;
     }
 
+    remoteSocketIdRef.current = targetUser.socketId;
     const peer = await setupWebRTC(targetUser.socketId);
     setIsCalling(true);
 
@@ -606,6 +618,7 @@ export default function App() {
   const acceptCall = async () => {
     if (!callerSignal || !callerSocketId) return;
 
+    remoteSocketIdRef.current = callerSocketId;
     setReceivingCall(false);
     setIsCalling(true);
     const peer = await setupWebRTC(callerSocketId);
@@ -752,19 +765,19 @@ export default function App() {
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
           <aside style={{ width: isMobile ? '100%' : '32%', borderRight: isMobile ? 'none' : '1px solid #eee', borderBottom: isMobile ? '1px solid #eee' : 'none', background: '#fcfcfc', padding: isMobile ? '20px 16px' : '24px', minHeight: isMobile ? '220px' : 'auto' }}>
             <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: '14px', marginBottom: '12px' }}>
-              {userProfile.picture && (
-                <label htmlFor="profile-avatar-upload" style={{ cursor: 'pointer', display: 'inline-flex', flexShrink: 0, flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                  <img src={userProfile.picture} alt="Profile" style={{ width: 50, height: 50, borderRadius: '50%', border: '1px solid #e5e7eb' }} />
-                  <span style={{ fontSize: 11, color: '#6b7280' }}>Change photo</span>
-                </label>
-              )}
+              <label htmlFor="profile-avatar-upload" style={{ cursor: 'pointer', display: 'inline-flex', flexShrink: 0, flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 50, height: 50, borderRadius: '50%', overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {userProfile.picture ? <img src={userProfile.picture} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 12, color: '#6b7280' }}>Upload</span>}
+                </div>
+                <span style={{ fontSize: 11, color: '#6b7280' }}>Change photo</span>
+              </label>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{userProfile.name}</p>
                 <p style={{ margin: '6px 0 0', color: '#2d8f5f', fontSize: '13px' }}>● Active online</p>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: isMobile ? 10 : 0, width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : 'flex-end' }}>
-                <button onClick={() => setShowEditProfile(true)} style={{ flex: isMobile ? 1 : undefined, padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Edit</button>
-                <button onClick={signOut} style={{ flex: isMobile ? 1 : undefined, padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>Sign Out</button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: isMobile ? 10 : 0, width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'stretch' : 'flex-end' }}>
+                <button onClick={() => setShowEditProfile(true)} style={{ flex: isMobile ? 1 : undefined, minHeight: isMobile ? 46 : undefined, padding: isMobile ? '12px 14px' : '8px 10px', width: isMobile ? '100%' : undefined, borderRadius: 10, background: '#fff', border: '1px solid #e5e7eb' }}>Edit</button>
+                <button onClick={signOut} style={{ flex: isMobile ? 1 : undefined, minHeight: isMobile ? 46 : undefined, padding: isMobile ? '12px 14px' : '8px 10px', width: isMobile ? '100%' : undefined, borderRadius: 10, background: '#fff', border: '1px solid #e5e7eb' }}>Sign Out</button>
               </div>
             </div>
             <div>
@@ -875,28 +888,64 @@ export default function App() {
                 <input ref={(el) => { avatarInputRef.current = el; }} id="profile-avatar-upload" type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => handleAvatarChange(e.target.files?.[0])} />
 
                 {isCalling && (
-                  <div style={{ display: 'flex', gap: '16px', marginBottom: '22px' }}>
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      style={{ width: '50%', borderRadius: '16px', background: '#000' }}
-                    />
-                    <video
-                      ref={remoteVideoRef}
-                      autoPlay
-                      playsInline
-                      style={{ width: '50%', borderRadius: '16px', background: '#000' }}
-                    />
-                  </div>
-                )}
+                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    {/* Video Player Section */}
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px', borderRadius: '18px', background: '#000', overflow: 'hidden' }}>
+                      {/* Remote Video (larger) */}
+                      <div style={{ flex: 2, minHeight: 0, position: 'relative', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', overflow: 'hidden' }}>
+                        <video
+                          ref={remoteVideoRef}
+                          autoPlay
+                          playsInline
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            transform: 'scaleX(-1)',
+                            borderRadius: '12px',
+                          }}
+                        />
+                        {!remoteVideoRef.current?.srcObject && (
+                          <div style={{ position: 'absolute', textAlign: 'center', color: '#999' }}>
+                            <p style={{ fontSize: '48px', margin: 0 }}>📹</p>
+                            <p style={{ margin: '8px 0 0', fontSize: '14px' }}>Waiting for video...</p>
+                          </div>
+                        )}
+                      </div>
 
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px', borderRadius: '18px', background: '#fbfbfb', border: '1px solid #eee' }}>
-                    {messages.filter((message) => message.fromUserId === activeChat.id || message.fromUserId === userProfile.id).map((message, index) => {
-                      const isSentByMe = message.fromUserId === userProfile.id;
-                      return (
+                      {/* Local Video (smaller, PIP) */}
+                      <div style={{ flex: isMobile ? 1 : 0.8, minHeight: isMobile ? 200 : 0, position: 'relative', background: '#2a2a2a', borderRadius: '12px', overflow: 'hidden', border: '2px solid #fd3b73' }}>
+                        <video
+                          ref={localVideoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            transform: 'scaleX(-1)',
+                            borderRadius: '10px',
+                          }}
+                        />
+                        {!localVideoRef.current?.srcObject && (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#333', color: '#999', fontSize: '12px' }}>
+                            Loading...
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Messages Section */}
+                    <div style={{ height: isMobile ? '220px' : '200px', flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px', borderRadius: '12px', background: '#fbfbfb', border: '1px solid #eee' }}>
+                      <div ref={messagesEndRef} />
+                      {messages
+                        .filter((message) => message.fromUserId === activeChat.id || message.fromUserId === userProfile.id)
+                        .slice()
+                        .reverse()
+                        .map((message, index) => {
+                          const isSentByMe = message.fromUserId === userProfile.id;
+                          return (
                         <div key={index} style={{ display: 'flex', justifyContent: isSentByMe ? 'flex-end' : 'flex-start', marginBottom: '12px' }}>
                           <div style={{
                             background: isSentByMe ? '#fd3b73' : '#e5e7eb',
@@ -920,7 +969,6 @@ export default function App() {
                         </div>
                       );
                     })}
-                    <div ref={messagesEndRef} />
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
@@ -933,16 +981,16 @@ export default function App() {
                             event.target.selectedIndex = 0;
                           }
                         }}
-                        style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', minWidth: 160 }}
+                        style={{ padding: '10px 12px', borderRadius: 12, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', minWidth: 120, fontSize: 14 }}
                       >
-                        <option value="">😊 Add emoji</option>
+                        <option value="">Add emoji</option>
                         {emojiList.map((emoji) => (
                           <option key={emoji} value={emoji}>{emoji}</option>
                         ))}
                       </select>
 
                       <input id="chat-file" type="file" style={{ display: 'none' }} onChange={(e) => sendFile(e.target.files?.[0] ?? null)} />
-                      <label htmlFor="chat-file" style={{ cursor: 'pointer', padding: 12, borderRadius: 12, background: '#f3f4f6', border: '1px solid #e5e7eb' }}>📎</label>
+                      <label htmlFor="chat-file" style={{ cursor: 'pointer', padding: 12, borderRadius: 12, background: '#f3f4f6', border: '1px solid #e5e7eb' }}>Attach</label>
                     </div>
 
                     <div style={{ display: 'flex', flex: 1, minWidth: 0, gap: '10px', alignItems: 'center' }}>
