@@ -192,42 +192,34 @@ input, select, textarea, button {
   font-size: 16px;
 }
 
-html, body {
-  touch-action: none;
-  overflow: hidden;
+body {
+  min-height: 100vh;
+  -webkit-text-size-adjust: 100%;
 }
 
-/* Prevent pinch zoom on mobile */
+/* Prevent pinch zoom on mobile only when interacting with controls */
 @media (max-width: 900px) {
   * {
     touch-action: manipulation;
   }
-  
   body {
-    overscroll-behavior: none;
+    overscroll-behavior: auto;
   }
 }
 
 /* Video stream container */
 video {
   display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   background: #000;
   -webkit-appearance: none;
   appearance: none;
 }
 
-/* Ensure proper mobile video rendering */
 @media (max-width: 900px) {
   video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  
-  body {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+    min-height: 160px;
   }
 }

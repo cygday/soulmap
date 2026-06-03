@@ -890,9 +890,9 @@ export default function App() {
                 {isCalling && (
                   <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '18px' }}>
                     {/* Video Player Section */}
-                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px', borderRadius: '18px', background: '#000', overflow: 'hidden' }}>
+                    <div style={{ width: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px', borderRadius: '18px', background: '#000', overflow: 'hidden', minHeight: isMobile ? 320 : 360 }}>
                       {/* Remote Video (larger) */}
-                      <div style={{ flex: 2, minHeight: 0, position: 'relative', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', overflow: 'hidden' }}>
+                      <div style={{ flex: 2, minWidth: 0, minHeight: isMobile ? 220 : 360, position: 'relative', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', overflow: 'hidden' }}>
                         <video
                           ref={remoteVideoRef}
                           autoPlay
@@ -906,15 +906,15 @@ export default function App() {
                           }}
                         />
                         {!remoteVideoRef.current?.srcObject && (
-                          <div style={{ position: 'absolute', textAlign: 'center', color: '#999' }}>
-                            <p style={{ fontSize: '48px', margin: 0 }}>📹</p>
-                            <p style={{ margin: '8px 0 0', fontSize: '14px' }}>Waiting for video...</p>
+                          <div style={{ position: 'absolute', textAlign: 'center', color: '#999', padding: 16 }}>
+                            <p style={{ fontSize: '42px', margin: 0 }}>📹</p>
+                            <p style={{ margin: '8px 0 0', fontSize: '14px' }}>Waiting for remote video...</p>
                           </div>
                         )}
                       </div>
 
                       {/* Local Video (smaller, PIP) */}
-                      <div style={{ flex: isMobile ? 1 : 0.8, minHeight: isMobile ? 200 : 0, position: 'relative', background: '#2a2a2a', borderRadius: '12px', overflow: 'hidden', border: '2px solid #fd3b73' }}>
+                      <div style={{ flex: isMobile ? 'none' : 0.8, width: isMobile ? '100%' : 'auto', minHeight: isMobile ? 180 : 360, maxHeight: isMobile ? 180 : 'none', position: 'relative', background: '#2a2a2a', borderRadius: '12px', overflow: 'hidden', border: '2px solid #fd3b73' }}>
                         <video
                           ref={localVideoRef}
                           autoPlay
@@ -930,7 +930,7 @@ export default function App() {
                         />
                         {!localVideoRef.current?.srcObject && (
                           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#333', color: '#999', fontSize: '12px' }}>
-                            Loading...
+                            Loading local camera...
                           </div>
                         )}
                       </div>
