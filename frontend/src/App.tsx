@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { io, Socket } from 'socket.io-client';
 import type { User, Message } from './types';
@@ -68,7 +68,6 @@ export default function App() {
   const [profileData, setProfileData] = useState<{ name: string; age?: string; dob?: string; interests?: string[]; country?: string; photo?: string }>({ name: '', interests: [], country: '' });
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [showEditProfile, setShowEditProfile] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [messagePreview, setMessagePreview] = useState<Record<string, string>>({});
   const [sentFriends, setSentFriends] = useState<Record<string, boolean>>({});
@@ -121,7 +120,6 @@ export default function App() {
   const [callerSignal, setCallerSignal] = useState<RTCSessionDescriptionInit | null>(null);
   const [callerSocketId, setCallerSocketId] = useState<string>('');
   const [locationFilter, setLocationFilter] = useState<'nearby' | 'outbound' | 'all'>('nearby');
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -142,6 +140,41 @@ export default function App() {
     }
     return true;
   });
+
+  const chatMessages = activeChat && userProfile
+    ? messages
+        .filter((message) => message.fromUserId === activeChat.id || message.fromUserId === userProfile.id)
+        .slice()
+        .reverse()
+        .map((message, index) => {
+          const isSentByMe = message.fromUserId === userProfile.id;
+          return (
+            <div key={index} style={{ display: 'flex', justifyContent: isSentByMe ? 'flex-end' : 'flex-start', marginBottom: '12px' }}>
+              <div
+                style={{
+                  background: isSentByMe ? '#fd3b73' : '#e5e7eb',
+                  color: isSentByMe ? '#fff' : '#111',
+                  padding: '12px 16px',
+                  borderRadius: '18px',
+                  maxWidth: '70%',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {message.file ? (
+                  message.file.mime?.startsWith('image/') ? (
+                    <img src={message.file.data} alt={message.file.name} style={{ maxWidth: '100%', borderRadius: 8 }} />
+                  ) : (
+                    <a href={message.file.data} download={message.file.name} style={{ color: isSentByMe ? '#fff' : '#111' }}>{message.file.name}</a>
+                  )
+                ) : (
+                  message.text
+                )}
+              </div>
+            </div>
+          );
+        })
+    : [];
 
   const handleGoogleSuccess = async (credentialResponse: GoogleCredentialResponse) => {
     try {
@@ -306,7 +339,6 @@ export default function App() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
         fetchNearbyMatches(position.coords.latitude, position.coords.longitude);
       },
       (error) => {
@@ -386,7 +418,7 @@ export default function App() {
       setMatches((prev) => prev.map((match) => (match.id === userId ? { ...match, socketId: undefined } : match)));
     });
 
-    socket.on('call-ended', ({ fromSocketId }: any) => {
+    socket.on('call-ended', () => {
       endCall();
     });
 
@@ -527,16 +559,6 @@ export default function App() {
       setProfileData(p => ({ ...p, photo: data }));
     };
     reader.readAsDataURL(file);
-  };
-
-  const uploadProfilePhoto = async () => {
-    if (!userProfile || !profileData.photo) return;
-    try {
-      setIsUploading(true);
-      await fetch(`${BACKEND_URL}/api/upload-photo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: userProfile.id, photo: profileData.photo }) });
-    } catch (e) {
-      console.error('Upload failed', e);
-    } finally { setIsUploading(false); }
   };
 
   const addFriend = (targetUserId: string) => {
@@ -835,7 +857,7 @@ export default function App() {
 
           <main style={{ width: isMobile ? '100%' : '68%', padding: isMobile ? '16px' : '24px', display: 'flex', flexDirection: 'column' }}>
             {activeChat ? (
-              <>
+              <div style={{ display: 'contents' }}>
                 <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: '22px', gap: isMobile ? 16 : 0 }}>
                   <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: 14 }}>
                     <div style={{ width: 60, height: 60, borderRadius: 18, overflow: 'hidden', cursor: 'pointer', border: '1px solid #e5e7eb' }} onClick={() => avatarInputRef.current?.click()}>
@@ -939,37 +961,8 @@ export default function App() {
                     {/* Messages Section */}
                     <div style={{ height: isMobile ? '220px' : '200px', flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px', borderRadius: '12px', background: '#fbfbfb', border: '1px solid #eee' }}>
                       <div ref={messagesEndRef} />
-                      {messages
-                        .filter((message) => message.fromUserId === activeChat.id || message.fromUserId === userProfile.id)
-                        .slice()
-                        .reverse()
-                        .map((message, index) => {
-                          const isSentByMe = message.fromUserId === userProfile.id;
-                          return (
-                        <div key={index} style={{ display: 'flex', justifyContent: isSentByMe ? 'flex-end' : 'flex-start', marginBottom: '12px' }}>
-                          <div style={{
-                            background: isSentByMe ? '#fd3b73' : '#e5e7eb',
-                            color: isSentByMe ? '#fff' : '#111',
-                            padding: '12px 16px',
-                            borderRadius: '18px',
-                            maxWidth: '70%',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                          }}>
-                            {message.file ? (
-                              message.file.mime?.startsWith('image/') ? (
-                                <img src={message.file.data} alt={message.file.name} style={{ maxWidth: '100%', borderRadius: 8 }} />
-                              ) : (
-                                <a href={message.file.data} download={message.file.name} style={{ color: isSentByMe ? '#fff' : '#111' }}>{message.file.name}</a>
-                              )
-                            ) : (
-                              message.text
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                      {chatMessages}
+                    </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
@@ -1028,7 +1021,8 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-              </>
+                )}
+              </div>
             ) : (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#777' }}>
                 <p style={{ fontSize: '48px', margin: 0 }}>💬</p>
