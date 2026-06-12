@@ -369,34 +369,37 @@ export default function App() {
       setConnectionError(`Socket connect failed: ${message}. Check your backend URL and allowed origins.`);
     });
 
-    socket.on('receive-message', (message: Message) => {
-      setMessages((prev) => [...prev, message]);
-      if (activeChatRef.current?.id !== message.fromUserId) {
+    const handleIncomingMessage = (message: any) => {
+      // normalize fields (some backends use toUserId/fromUserId or from/to)
+      const normalized: Message = {
+        fromUserId: message.fromUserId || message.from || message.senderId || message.userId,
+        text: message.text || message.msg || message.message || (message.file ? `[file] ${message.file.name}` : ''),
+        timestamp: message.timestamp || message.ts || Date.now(),
+        file: message.file || null,
+      } as Message;
+
+      console.debug('Incoming message', normalized);
+      setMessages((prev) => [...prev, normalized]);
+      if (activeChatRef.current?.id !== normalized.fromUserId) {
         setUnreadCounts((prev) => ({
           ...prev,
-          [message.fromUserId]: (prev[message.fromUserId] || 0) + 1,
+          [normalized.fromUserId]: (prev[normalized.fromUserId] || 0) + 1,
         }));
         setMessagePreview((prev) => ({
           ...prev,
-          [message.fromUserId]: message.text.slice(0, 18),
+          [normalized.fromUserId]: (normalized.text || '').slice(0, 18),
         }));
       } else {
         playRingtone();
       }
-    });
+    };
 
-    socket.on('receive-file', ({ fromUserId, file, timestamp }: any) => {
-      setMessages((prev) => [...prev, { fromUserId, text: `${file.name}`, timestamp, file }]);
-      if (activeChatRef.current?.id !== fromUserId) {
-        setUnreadCounts((prev) => ({
-          ...prev,
-          [fromUserId]: (prev[fromUserId] || 0) + 1,
-        }));
-        setMessagePreview((prev) => ({
-          ...prev,
-          [fromUserId]: file.name,
-        }));
-      }
+    socket.on('receive-message', handleIncomingMessage);
+    socket.on('message', handleIncomingMessage);
+    socket.on('private-message', handleIncomingMessage);
+
+    socket.on('receive-file', (payload: any) => {
+      handleIncomingMessage({ fromUserId: payload.fromUserId || payload.from, text: payload.file?.name || payload.text, timestamp: payload.timestamp, file: payload.file });
     });
 
     socket.on('incoming-call', ({ fromSocketId, offer }: { fromSocketId: string; offer: RTCSessionDescriptionInit }) => {
@@ -484,19 +487,33 @@ export default function App() {
   const sendMessage = () => {
     if (!inputText.trim() || !activeChat || !socketRef.current || !userProfile) return;
 
-    const message: Message = {
+    const timestamp = Date.now();
+    const localMessage: Message = {
       fromUserId: userProfile.id,
       text: inputText.trim(),
-      timestamp: Date.now(),
+      timestamp,
     };
 
-    socketRef.current.emit('send-message', {
-      toUserId: activeChat.id,
-      text: message.text,
-    });
-
-    setMessages((prev) => [...prev, message]);
+    // optimistic UI update
+    setMessages((prev) => [...prev, localMessage]);
     setInputText('');
+
+    const payload = {
+      fromUserId: userProfile.id,
+      toUserId: activeChat.id,
+      toSocketId: (activeChat as any).socketId,
+      text: localMessage.text,
+      timestamp,
+    };
+
+    console.debug('Emitting send-message', payload);
+    socketRef.current.emit('send-message', payload, (ack: any) => {
+      if (ack && ack.error) {
+        console.error('Send message error', ack.error);
+      } else {
+        console.debug('Server ack for send-message', ack);
+      }
+    });
   };
 
   const sendFile = (file: File | null) => {
@@ -505,8 +522,24 @@ export default function App() {
     reader.onload = () => {
       const data = reader.result as string;
       const fileObj = { name: file.name, mime: file.type, data };
-      socketRef.current?.emit('send-file', { toUserId: activeChat.id, file: fileObj });
-      setMessages((prev) => [...prev, { fromUserId: userProfile.id, text: `[file] ${file.name}`, timestamp: Date.now(), file: fileObj }]);
+      const timestamp = Date.now();
+
+      // optimistic UI
+      setMessages((prev) => [...prev, { fromUserId: userProfile.id, text: `[file] ${file.name}`, timestamp, file: fileObj }]);
+
+      const payload = {
+        fromUserId: userProfile.id,
+        toUserId: activeChat.id,
+        toSocketId: (activeChat as any).socketId,
+        file: fileObj,
+        timestamp,
+      };
+
+      console.debug('Emitting send-file', payload);
+      socketRef.current?.emit('send-file', payload, (ack: any) => {
+        if (ack && ack.error) console.error('Send file error', ack.error);
+        else console.debug('Server ack for send-file', ack);
+      });
     };
     reader.readAsDataURL(file);
   };
